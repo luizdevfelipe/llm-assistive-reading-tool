@@ -71,91 +71,71 @@ client = OpenAI(
 # CONFIGURAÇÃO DA LEITURA DE TEXTO
 # ============================================================
 
-try:
-    engine = pyttsx3.init()
-except Exception:
-    engine = None
-
-
 voz_ptbr_encontrada = False
 aviso_voz_exibido = False
 
 
-def configurar_voz_portuguesa():
+def configurar_voz_portuguesa(mecanismo):
     """
     Procura uma voz em português brasileiro entre as vozes
     instaladas no sistema operacional.
     """
 
-    global voz_ptbr_encontrada
+    vozes = mecanismo.getProperty("voices")
 
-    if engine is None:
-        return
+    # Primeiro, procura especificamente uma voz brasileira.
+    for voz in vozes:
+        informacoes = [
+            str(voz.id),
+            str(voz.name)
+        ]
 
-    try:
-        vozes = engine.getProperty("voices")
+        if hasattr(voz, "languages"):
+            for idioma in voz.languages:
+                if isinstance(idioma, bytes):
+                    idioma = idioma.decode(
+                        "utf-8",
+                        errors="ignore"
+                    )
 
-        # Primeiro, procura especificamente uma voz brasileira.
-        for voz in vozes:
-            informacoes = [
-                str(voz.id),
-                str(voz.name)
-            ]
+                informacoes.append(str(idioma))
 
-            if hasattr(voz, "languages"):
-                for idioma in voz.languages:
-                    if isinstance(idioma, bytes):
-                        idioma = idioma.decode(
-                            "utf-8",
-                            errors="ignore"
-                        )
+        dados = " ".join(informacoes).lower()
 
-                    informacoes.append(str(idioma))
+        if (
+            "brazil" in dados
+            or "brasil" in dados
+            or "pt-br" in dados
+            or "pt_br" in dados
+        ):
+            mecanismo.setProperty("voice", voz.id)
+            return True
 
-            dados = " ".join(informacoes).lower()
+    # Caso não encontre uma voz brasileira,
+    # tenta localizar alguma voz em português.
+    for voz in vozes:
+        informacoes = [
+            str(voz.id),
+            str(voz.name)
+        ]
 
-            if (
-                "brazil" in dados
-                or "brasil" in dados
-                or "pt-br" in dados
-                or "pt_br" in dados
-            ):
-                engine.setProperty("voice", voz.id)
-                voz_ptbr_encontrada = True
-                return
+        if hasattr(voz, "languages"):
+            for idioma in voz.languages:
+                if isinstance(idioma, bytes):
+                    idioma = idioma.decode(
+                        "utf-8",
+                        errors="ignore"
+                    )
 
-        # Caso não encontre uma voz brasileira,
-        # tenta localizar alguma voz em português.
-        for voz in vozes:
-            informacoes = [
-                str(voz.id),
-                str(voz.name)
-            ]
+                informacoes.append(str(idioma))
 
-            if hasattr(voz, "languages"):
-                for idioma in voz.languages:
-                    if isinstance(idioma, bytes):
-                        idioma = idioma.decode(
-                            "utf-8",
-                            errors="ignore"
-                        )
+        dados = " ".join(informacoes).lower()
 
-                    informacoes.append(str(idioma))
+        if "portuguese" in dados or "português" in dados:
+            mecanismo.setProperty("voice", voz.id)
+            return False
 
-            dados = " ".join(informacoes).lower()
-
-            if "portuguese" in dados or "português" in dados:
-                engine.setProperty("voice", voz.id)
-                return
-
-    except Exception as erro:
-        print("Erro ao configurar a voz:", erro)
-
-
-configurar_voz_portuguesa()
-
-if engine is not None:
-    engine.setProperty("rate", 165)
+    return False
 
 
 # ============================================================
@@ -883,15 +863,17 @@ def verificar_resultados():
 
             renderizar_markdown(conteudo)
 
-            status_var.set(
-                "Processamento concluído."
-            )
+            if leitura_ativa:
+                status_var.set("Realizando leitura...")
+            else:
+                status_var.set("Processamento concluído.")
 
         else:
 
-            status_var.set(
-                "Ocorreu um erro no processamento."
-            )
+            if leitura_ativa:
+                status_var.set("Realizando leitura...")
+            else:
+                status_var.set("Ocorreu um erro no processamento.")
 
             messagebox.showerror(
                 "Erro no processamento",
@@ -913,56 +895,131 @@ def verificar_resultados():
 
 
 # ============================================================
-# LEITURA EM VOZ ALTA - THREAD SEPARADA
+# LEITURA EM VOZ ALTA - THREAD DEDICADA
 # ============================================================
 
-engine_lock = threading.Lock()
 leitura_ativa = False
-parar_leitura_evento = threading.Event()
+leitura_interrompendo = False
+leitura_pronta = False
+erro_leitura = None
+comandos_leitura = queue.Queue()
+eventos_leitura = queue.Queue()
+thread_leitura = None
+fechamento_solicitado = False
 
 
-def executar_leitura(texto):
+def finalizar_leitura(erro=None):
     global leitura_ativa
+    global leitura_interrompendo
+
+    leitura_ativa = False
+    leitura_interrompendo = False
+    atualizar_status_leitura()
+
+    if erro is not None:
+        messagebox.showerror(
+            "Erro de leitura",
+            f"Não foi possível realizar a leitura.\n\n{erro}"
+        )
+
+
+def trabalhador_leitura():
+    mecanismo = None
+    loop_iniciado = False
+    estado = {
+        "ativa": False,
+        "interrompendo": False,
+        "encerrar": False
+    }
 
     try:
-        with engine_lock:
+        mecanismo = pyttsx3.init()
+        voz_encontrada = configurar_voz_portuguesa(mecanismo)
+        mecanismo.setProperty("rate", 165)
 
-            engine.say(texto)
+        def ao_concluir_leitura(name=None, completed=None):
+            estado["ativa"] = False
+            estado["interrompendo"] = False
+            eventos_leitura.put(("concluida", completed))
 
-            # Inicia a leitura e mantém o loop de eventos ativo.
-            engine.startLoop(False)
+        def ao_ocorrer_erro_leitura(name=None, exception=None):
+            estado["ativa"] = False
+            estado["interrompendo"] = False
+            eventos_leitura.put(("erro", str(exception)))
 
-            while engine.isBusy():
+        mecanismo.connect("finished-utterance", ao_concluir_leitura)
+        mecanismo.connect("error", ao_ocorrer_erro_leitura)
+        mecanismo.startLoop(False)
+        loop_iniciado = True
+        eventos_leitura.put(("pronto", voz_encontrada))
 
-                if parar_leitura_evento.is_set():
-                    engine.stop()
-                    break
+        while True:
+            try:
+                comando, conteudo = comandos_leitura.get_nowait()
+            except queue.Empty:
+                comando = None
+                conteudo = None
 
-                engine.iterate()
-                threading.Event().wait(0.01)
+            if comando is not None:
+                if comando == "ler":
+                    if estado["ativa"]:
+                        eventos_leitura.put(
+                            ("erro", "Já existe uma leitura em andamento.")
+                        )
+                        continue
 
-            engine.endLoop()
+                    try:
+                        estado["ativa"] = True
+                        mecanismo.say(conteudo)
+                    except Exception as erro:
+                        estado["ativa"] = False
+                        eventos_leitura.put(("erro", str(erro)))
+
+                elif comando == "parar":
+                    if estado["ativa"] and not estado["interrompendo"]:
+                        try:
+                            mecanismo.stop()
+                            estado["interrompendo"] = True
+                        except Exception as erro:
+                            eventos_leitura.put(
+                                ("erro_interrupcao", str(erro))
+                            )
+
+                elif comando == "encerrar":
+                    estado["encerrar"] = True
+                    if estado["ativa"] and not estado["interrompendo"]:
+                        try:
+                            mecanismo.stop()
+                            estado["interrompendo"] = True
+                        except Exception as erro:
+                            eventos_leitura.put(
+                                ("erro_interrupcao", str(erro))
+                            )
+
+            if estado["encerrar"] and not estado["ativa"]:
+                break
+
+            mecanismo.iterate()
+            threading.Event().wait(0.01)
 
     except Exception as erro:
-        janela.after(
-            0,
-            lambda: messagebox.showerror(
-                "Erro de leitura",
-                f"Não foi possível realizar a leitura.\n\n{erro}"
-            )
-        )
+        eventos_leitura.put(("falha", str(erro)))
 
     finally:
-        leitura_ativa = False
+        if mecanismo is not None and loop_iniciado:
+            try:
+                mecanismo.endLoop()
+            except Exception as erro:
+                eventos_leitura.put(
+                    ("falha", f"Não foi possível encerrar o mecanismo: {erro}")
+                )
 
-        janela.after(
-            0,
-            atualizar_status_leitura
-        )
+        eventos_leitura.put(("encerrado", None))
 
 
 def ler_resultado():
     global leitura_ativa
+    global leitura_interrompendo
     global aviso_voz_exibido
 
     texto = campo_saida.get(
@@ -977,10 +1034,16 @@ def ler_resultado():
         )
         return
 
-    if engine is None:
+    if not leitura_pronta:
+        detalhes = (
+            f"\n\n{erro_leitura}"
+            if erro_leitura
+            else " Aguarde a inicialização e tente novamente."
+        )
         messagebox.showerror(
             "Erro de leitura",
-            "Não foi possível inicializar o mecanismo de leitura."
+            "O mecanismo de leitura ainda não está disponível."
+            + detalhes
         )
         return
 
@@ -1000,42 +1063,99 @@ def ler_resultado():
         aviso_voz_exibido = True
 
     leitura_ativa = True
-    parar_leitura_evento.clear()
-
-    status_var.set(
-        "Realizando leitura..."
-    )
-
-    thread = threading.Thread(
-        target=executar_leitura,
-        args=(texto,),
-        daemon=True
-    )
-
-    thread.start()
+    leitura_interrompendo = False
+    status_var.set("Realizando leitura...")
+    comandos_leitura.put(("ler", texto))
 
 
 def parar_leitura():
+    global leitura_interrompendo
+
     if not leitura_ativa:
         return
 
-    parar_leitura_evento.set()
-
-    status_var.set(
-        "Interrompendo leitura..."
-    )
+    leitura_interrompendo = True
+    comandos_leitura.put(("parar", None))
 
 
 def atualizar_status_leitura():
-    if not em_processamento:
-        if leitura_ativa:
-            status_var.set(
-                "Realizando leitura..."
+    if leitura_ativa:
+        status_var.set(
+            "Realizando leitura..."
+        )
+    elif em_processamento:
+        status_var.set(
+            f"Processando: {modo_var.get()}..."
+        )
+    else:
+        status_var.set(
+            "Pronto para utilizar."
+        )
+
+
+def verificar_eventos_leitura():
+    global leitura_pronta
+    global voz_ptbr_encontrada
+    global erro_leitura
+    global leitura_interrompendo
+
+    while True:
+        try:
+            evento, detalhes = eventos_leitura.get_nowait()
+        except queue.Empty:
+            break
+
+        if evento == "pronto":
+            leitura_pronta = True
+            voz_ptbr_encontrada = detalhes
+            erro_leitura = None
+        elif evento == "concluida":
+            finalizar_leitura()
+        elif evento == "erro":
+            finalizar_leitura(RuntimeError(detalhes))
+        elif evento == "erro_interrupcao":
+            leitura_interrompendo = False
+            messagebox.showerror(
+                "Erro de leitura",
+                f"Não foi possível interromper a leitura.\n\n{detalhes}"
             )
-        else:
-            status_var.set(
-                "Pronto para utilizar."
-            )
+        elif evento == "falha":
+            leitura_pronta = False
+            erro_leitura = detalhes
+            if leitura_ativa:
+                finalizar_leitura(RuntimeError(detalhes))
+
+    if not fechamento_solicitado and janela.winfo_exists():
+        janela.after(50, verificar_eventos_leitura)
+
+
+def iniciar_trabalhador_leitura():
+    global thread_leitura
+
+    thread_leitura = threading.Thread(
+        target=trabalhador_leitura,
+        daemon=True
+    )
+    thread_leitura.start()
+
+
+def finalizar_fechamento():
+    if thread_leitura is not None and thread_leitura.is_alive():
+        janela.after(50, finalizar_fechamento)
+    else:
+        janela.destroy()
+
+
+def fechar_janela():
+    global fechamento_solicitado
+
+    if fechamento_solicitado:
+        return
+
+    fechamento_solicitado = True
+    esconder_overlay()
+    comandos_leitura.put(("encerrar", None))
+    janela.after(50, finalizar_fechamento)
 
 
 # ============================================================
@@ -1398,12 +1518,6 @@ aplicar_configuracoes()
 # ENCERRAMENTO E INICIALIZAÇÃO
 # ============================================================
 
-def fechar_janela():
-    esconder_overlay()
-    parar_leitura()
-    janela.destroy()
-
-
 janela.protocol(
     "WM_DELETE_WINDOW",
     fechar_janela
@@ -1414,5 +1528,8 @@ janela.after(
     100,
     verificar_resultados
 )
+
+iniciar_trabalhador_leitura()
+janela.after(50, verificar_eventos_leitura)
 
 janela.mainloop()
