@@ -601,45 +601,48 @@ def iniciar_processamento():
 # INTERPRETAÇÃO MARKDOWN
 # ============================================================
 
-def aplicar_formatacao_markdown():
+def aplicar_formatacao_markdown(tamanho_fonte):
     """
     Configura as tags visuais utilizadas pelo renderizador Markdown.
     """
 
+    def tamanho_escalado(tamanho_base):
+        return round(tamanho_base * tamanho_fonte / 12)
+
     campo_saida.tag_configure(
         "h1",
-        font=("Arial", 19, "bold"),
+        font=("Arial", tamanho_escalado(19), "bold"),
         spacing1=12,
         spacing3=8
     )
 
     campo_saida.tag_configure(
         "h2",
-        font=("Arial", 15, "bold"),
+        font=("Arial", tamanho_escalado(15), "bold"),
         spacing1=10,
         spacing3=6
     )
 
     campo_saida.tag_configure(
         "h3",
-        font=("Arial", 13, "bold"),
+        font=("Arial", tamanho_escalado(13), "bold"),
         spacing1=8,
         spacing3=4
     )
 
     campo_saida.tag_configure(
         "bold",
-        font=("Arial", 12, "bold")
+        font=("Arial", tamanho_fonte, "bold")
     )
 
     campo_saida.tag_configure(
         "italic",
-        font=("Arial", 12, "italic")
+        font=("Arial", tamanho_fonte, "italic")
     )
 
     campo_saida.tag_configure(
         "code",
-        font=("Consolas", 11),
+        font=("Consolas", tamanho_escalado(11)),
         background="#E8E8E8",
         foreground="#333333"
     )
@@ -649,7 +652,7 @@ def aplicar_formatacao_markdown():
         lmargin1=20,
         lmargin2=20,
         foreground="#555555",
-        font=("Arial", 12, "italic"),
+        font=("Arial", tamanho_fonte, "italic"),
         spacing1=4,
         spacing3=4
     )
@@ -1083,6 +1086,8 @@ def aplicar_configuracoes():
         **configuracoes
     )
 
+    aplicar_formatacao_markdown(tamanho_fonte)
+
 
 def restaurar_padrao():
     fonte_var.set("12")
@@ -1250,8 +1255,6 @@ campo_saida.grid(
     sticky="nsew",
     pady=(0, 12)
 )
-
-aplicar_formatacao_markdown()
 
 # Botões de leitura.
 
