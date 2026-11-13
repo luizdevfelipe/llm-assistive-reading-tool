@@ -1,5 +1,6 @@
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, scrolledtext, messagebox
 import threading
 import queue
@@ -44,6 +45,7 @@ estilo.configure(
 fila_resultados = queue.Queue()
 em_processamento = False
 overlay = ProcessingOverlay(janela)
+FAMILIA_FONTE_DISLEXIA = "OpenDyslexic"
 
 
 # ============================================================
@@ -367,8 +369,14 @@ def aplicar_configuracoes():
         selecao_fundo = "#B5D5FF"
         selecao_texto = "#000000"
 
+    familia_fonte = (
+        FAMILIA_FONTE_DISLEXIA
+        if fonte_dislexia_var.get()
+        else "Arial"
+    )
+
     configuracoes = {
-        "font": ("Arial", tamanho_fonte),
+        "font": (familia_fonte, tamanho_fonte),
         "bg": fundo,
         "fg": texto,
         "insertbackground": cursor,
@@ -384,12 +392,36 @@ def aplicar_configuracoes():
         **configuracoes
     )
 
-    renderizador_markdown.aplicar_formatacao(tamanho_fonte)
+    renderizador_markdown.aplicar_formatacao(
+        tamanho_fonte,
+        familia_fonte
+    )
+
+
+def alterar_fonte_dislexia():
+    if fonte_dislexia_var.get():
+        familias_disponiveis = tkfont.families(root=janela)
+        if FAMILIA_FONTE_DISLEXIA.casefold() not in {
+            familia.casefold()
+            for familia in familias_disponiveis
+        }:
+            fonte_dislexia_var.set(False)
+            aplicar_configuracoes()
+            messagebox.showwarning(
+                "Fonte indisponível",
+                "A fonte OpenDyslexic não está instalada ou disponível "
+                "para o Tkinter. Instale os arquivos OTF da família "
+                "OpenDyslexic no Windows e reinicie o aplicativo."
+            )
+            return
+
+    aplicar_configuracoes()
 
 
 def restaurar_padrao():
     fonte_var.set("12")
     contraste_var.set("Padrão")
+    fonte_dislexia_var.set(False)
 
     aplicar_configuracoes()
 
@@ -608,6 +640,10 @@ contraste_var = tk.StringVar(
     value="Padrão"
 )
 
+fonte_dislexia_var = tk.BooleanVar(
+    value=False
+)
+
 ttk.Label(
     frame_acessibilidade,
     text="Tamanho da fonte:"
@@ -646,6 +682,16 @@ seletor_contraste = ttk.Combobox(
 )
 
 seletor_contraste.pack(
+    side="left",
+    padx=(0, 10)
+)
+
+ttk.Checkbutton(
+    frame_acessibilidade,
+    text="Usar fonte OpenDyslexic",
+    variable=fonte_dislexia_var,
+    command=alterar_fonte_dislexia
+).pack(
     side="left",
     padx=(0, 12)
 )

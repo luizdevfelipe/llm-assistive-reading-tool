@@ -13,6 +13,21 @@ python main\index.py
 O LM Studio deve estar iniciado com um modelo carregado e o servidor local
 disponível em `http://localhost:1234/v1`.
 
+## Fonte OpenDyslexic
+
+A opção **Usar fonte OpenDyslexic**, em Personalização visual, aplica a fonte
+ao texto original e ao texto adaptado. Para disponibilizá-la ao Tkinter no
+Windows:
+
+1. Abra `main\assets\open_dyslexic` no Explorador de Arquivos.
+2. Instale os arquivos `OpenDyslexic-Regular.otf`,
+   `OpenDyslexic-Bold.otf`, `OpenDyslexic-Italic.otf` e
+   `OpenDyslexic-BoldItalic.otf` pelo menu de contexto **Instalar**.
+3. Feche e abra novamente o aplicativo.
+
+Os estilos Alta e Mono são famílias alternativas e não são necessários para
+essa opção.
+
 ## Organização do código
 
 - `main\index.py`: ponto de entrada, interface e integração dos componentes.

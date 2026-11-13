@@ -7,39 +7,39 @@ class MarkdownRenderer:
     def __init__(self, campo_saida):
         self.campo_saida = campo_saida
 
-    def aplicar_formatacao(self, tamanho_fonte):
+    def aplicar_formatacao(self, tamanho_fonte, familia_fonte="Arial"):
         def tamanho_escalado(tamanho_base):
             return round(tamanho_base * tamanho_fonte / 12)
 
         self.campo_saida.tag_configure(
             "h1",
-            font=("Arial", tamanho_escalado(19), "bold"),
+            font=(familia_fonte, tamanho_escalado(19), "bold"),
             spacing1=12,
             spacing3=8
         )
         self.campo_saida.tag_configure(
             "h2",
-            font=("Arial", tamanho_escalado(15), "bold"),
+            font=(familia_fonte, tamanho_escalado(15), "bold"),
             spacing1=10,
             spacing3=6
         )
         self.campo_saida.tag_configure(
             "h3",
-            font=("Arial", tamanho_escalado(13), "bold"),
+            font=(familia_fonte, tamanho_escalado(13), "bold"),
             spacing1=8,
             spacing3=4
         )
         self.campo_saida.tag_configure(
             "bold",
-            font=("Arial", tamanho_fonte, "bold")
+            font=(familia_fonte, tamanho_fonte, "bold")
         )
         self.campo_saida.tag_configure(
             "italic",
-            font=("Arial", tamanho_fonte, "italic")
+            font=(familia_fonte, tamanho_fonte, "italic")
         )
         self.campo_saida.tag_configure(
             "code",
-            font=("Consolas", tamanho_escalado(11)),
+            font=(familia_fonte, tamanho_escalado(11)),
             background="#E8E8E8",
             foreground="#333333"
         )
@@ -48,7 +48,7 @@ class MarkdownRenderer:
             lmargin1=20,
             lmargin2=20,
             foreground="#555555",
-            font=("Arial", tamanho_fonte, "italic"),
+            font=(familia_fonte, tamanho_fonte, "italic"),
             spacing1=4,
             spacing3=4
         )
